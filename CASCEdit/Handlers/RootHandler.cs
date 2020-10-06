@@ -47,7 +47,7 @@ namespace CASCEdit.Handlers
 			this.locale = locale;
             string cdnPath = Helper.GetCDNPath("listfile.csv");
 
-            if (!(File.Exists(Path.Combine(CASContainer.Settings.OutputPath, cdnPath))) && onlineListfile)
+            if (!File.Exists( cdnPath) && onlineListfile)
             {
                 CASContainer.Logger.LogInformation("Downloading listfile from WoW.Tools");
                 ListFileClient.DownloadFile("https://wow.tools/casc/listfile/download/csv/unverified", cdnPath);
