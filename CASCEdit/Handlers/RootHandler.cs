@@ -84,6 +84,18 @@ namespace CASCEdit.Handlers
                 if (chunk.LocaleFlags == LocaleFlags.All_WoW && chunk.ContentFlags == ContentFlags.None)
 					GlobalRoot = chunk;
 
+				// trouble for shadowland prepatch 9.0
+				//discord shearx#2824 
+				//in fact, the chunk.ContentFlags is never equal to ContentFlags.None since the prepatch it seems
+				//welp i got it working, but not in a way that I think will work for long lol
+				//in an older version that worked, chunk.Count was equal to 19 on the GlobalRoot
+				//so i just had it check for a chunk who's Count property was also equal to 19
+				//and that got it started...
+				//if (chunk.Count == 19)
+				//	GlobalRoot = chunk;
+				//yea as expected things are definitely not working right
+                //best I stop fiddling around and just wait for proper updates lol
+
 				uint fileDataIndex = 0;
 				for (int i = 0; i < chunk.Count; i++)
 				{
