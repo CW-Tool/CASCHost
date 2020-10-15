@@ -37,7 +37,7 @@ namespace CASCEdit.Handlers
 
         public RootHandler()
 		{
-			GlobalRoot = new RootChunk() { ContentFlags = ContentFlags.None, LocaleFlags = LocaleFlags.All_WoW };
+			GlobalRoot = new RootChunk() { contentFlags = ContentFlags.None, localeFlags = LocaleFlags.All_WoW };
 			encodingMap = new EncodingMap(EncodingType.ZLib, 9);
 		}
 
@@ -68,20 +68,43 @@ namespace CASCEdit.Handlers
                 stream.BaseStream.Position = 0;
             }
 
-            long length = stream.BaseStream.Length;
+			Dictionary<uint, string> conDict = new Dictionary<uint, string> { };
+
+			long length = stream.BaseStream.Length;
 			while (stream.BaseStream.Position < length)
 			{
+				uint cnt = stream.ReadUInt32();
+				uint cflag = stream.ReadUInt32();
+				uint loc = stream.ReadUInt32();
+
+				//generate binary array and do a bit compare
+				// Fabian Today at 10:30
+				//0, 1, 2, 4, 8, 16, 32, 64, 128, 256, ...
+				//are the single flags
+				//any other number that doesnt fit in this sequence is just a combination of them
+				for (uint i = 0; i < 32; i++)
+				{
+					uint j =(uint)Math.Pow(2, i);
+					if ((j & cflag) > 0 )
+					{
+						if (!conDict.ContainsKey(j))
+						{
+							conDict.Add(j, "0x" + j.ToString("X4"));
+						}
+					}
+				}
+
 				RootChunk chunk = new RootChunk()
 				{
-					Count = stream.ReadUInt32(),
-					ContentFlags = (ContentFlags)stream.ReadUInt32(),
-					LocaleFlags = (LocaleFlags)stream.ReadUInt32(),
+					Count = cnt,
+					contentFlags = (ContentFlags)cflag,
+					localeFlags = (LocaleFlags)loc,		
 				};
 
                 parsedFiles += (int)chunk.Count;
 
                 // set the global root
-                if (chunk.LocaleFlags == LocaleFlags.All_WoW && chunk.ContentFlags == ContentFlags.None)
+                if (chunk.localeFlags == LocaleFlags.All_WoW && chunk.contentFlags == ContentFlags.None)
 					GlobalRoot = chunk;
 
 				// trouble for shadowland prepatch 9.0
@@ -94,7 +117,24 @@ namespace CASCEdit.Handlers
 				//if (chunk.Count == 19)
 				//	GlobalRoot = chunk;
 				//yea as expected things are definitely not working right
-                //best I stop fiddling around and just wait for proper updates lol
+				//best I stop fiddling around and just wait for proper updates lol
+
+
+				//i tried looking only at chunks that used the locale All_WoW but that never worked
+				//[00:23]
+				//i tried using the lowest contentFlag for those with count == 19, that also didn't work
+				//[00:23]
+				//i tried using only the first chunk with count == 19, also also didn't work
+				//[00:24]
+				//ultimately just letting it overwrite the global root var until it ran out of chunks to process is what did it
+				//[00:24]
+				//which is why i say its not the right way lol because it very obviously isn't
+				//[00:25]
+				//but as I said earlier there are no chunks that meet the criteria of having their content flag == 0x0(None)
+				//[00:25]
+				//so I don't know what to even look for to make it be correct
+				//[00:26]
+				//i don't know where to find a list of the flags either to see if there was actually a documented change
 
 				uint fileDataIndex = 0;
 				for (int i = 0; i < chunk.Count; i++)
@@ -146,6 +186,33 @@ namespace CASCEdit.Handlers
                 }
 
                 Chunks.Add(chunk);
+			}
+
+			//output new content flag
+			var sortAscendingByKey = from pair in conDict orderby pair.Key ascending select pair; //
+
+			// File name  
+			string fileName = @"contentflags.txt";
+			FileStream streamwriter = null;
+			try
+			{
+				// Create a FileStream with mode CreateNew  
+				streamwriter = new FileStream(fileName, FileMode.Create);
+				// Create a StreamWriter from FileStream  
+				using (StreamWriter writer = new StreamWriter(streamwriter, Encoding.UTF8))
+				{
+					writer.WriteLine("unit, hex");
+					foreach ( var subdict in sortAscendingByKey)
+					{
+						writer.WriteLine(String.Format("{0}, {1}", subdict.Key ,subdict.Value ));
+					}
+					
+				}
+			}
+			finally
+			{
+				if (streamwriter != null)
+					streamwriter.Dispose();
 			}
 
 			if (GlobalRoot == null)
@@ -215,7 +282,7 @@ namespace CASCEdit.Handlers
 			ulong namehash = new Jenkins96().ComputeHash(path);
 
 			var entries = Chunks
-						.FindAll(chunk => chunk.LocaleFlags.HasFlag(locale)) // Select locales that match selected locale
+						.FindAll(chunk => chunk.localeFlags.HasFlag(locale)) // Select locales that match selected locale
 						.SelectMany(chunk => chunk.Entries) // Flatten the array to get all entries within all matching chunks
 						.Where(e => e.NameHash == namehash);
 						
@@ -282,8 +349,8 @@ namespace CASCEdit.Handlers
 				foreach (var c in Chunks)
 				{
 					bw.Write((uint)c.Entries.Count);
-					bw.Write((uint)c.ContentFlags);
-					bw.Write((uint)c.LocaleFlags);
+					bw.Write((uint)c.contentFlags);
+					bw.Write((uint)c.localeFlags);
 
 					foreach (var e in c.Entries)
 						bw.Write(e.FileDataIdOffset);
@@ -349,7 +416,7 @@ namespace CASCEdit.Handlers
 
 			foreach (var root in Chunks)
 			{
-				if (!root.LocaleFlags.HasFlag(locale) && root != GlobalRoot) // ignore incorrect locale and not global
+				if (!root.localeFlags.HasFlag(locale) && root != GlobalRoot) // ignore incorrect locale and not global
 					continue;
 
 				var entries = root.Entries.Where(x => x.NameHash == hash);
